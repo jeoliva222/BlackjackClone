@@ -15,7 +15,7 @@ public class OpponentInfoPanel extends JPanel {
 	private static final long serialVersionUID = 1L;
 	
 	// Width and Height of panel
-	protected static final int iWidth = 300;
+	protected static final int iWidth = 350;
 	protected static final int iHeight = 160;
 	
 	// Title of the opponent

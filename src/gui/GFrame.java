@@ -23,12 +23,18 @@ public class GFrame extends JFrame {
 	// Prevents warnings
 	private static final long serialVersionUID = 1L;
 	
+	// Opponent index the game starts on
+	private static final int START_INDEX = 0;
+	
 	// Singleton instance of class
 	private static GFrame instance = null;
 	
+	// Animation delay (in milliseconds)
+	private static final int ANIM_DELAY = 500;
+	
 	// Width and Height of the frame
-	private int fWidth = 1080;
-	private int fHeight = 640;
+	private static final int WIDTH = 1080;
+	private static final int HEIGHT = 640;
 	
 	// Number to try to reach in the game
 	public static final int numGoal = 21;
@@ -42,11 +48,23 @@ public class GFrame extends JFrame {
 	// Opponent's cards
 	private ArrayList<CardPanel> aiCards = new ArrayList<CardPanel>();
 	
+	// Your Hold Status label
+	private JLabel playerHoldLabel;
+	
 	// Your Score label
 	private JLabel playerScore;
 	
+	// Your First label
+	private JLabel playerFirstLabel;
+	
+	// Opponent Hold Status label
+	private JLabel aiHoldLabel;
+	
 	// Opponent Score label
 	private JLabel aiScore;
+	
+	// Opponent First label
+	private JLabel aiFirstLabel;
 	
 	// Deck count label
 	private JLabel deckLabel;
@@ -72,7 +90,7 @@ public class GFrame extends JFrame {
 	
 	// Lineup of opponents and index indicating current active opponent
 	private GRoster lineup;
-	private int opptIndex = 3;
+	private int opptIndex = START_INDEX;
 	
 	// Number of wins from either contender
 	private int playerWins = 0;
@@ -87,17 +105,31 @@ public class GFrame extends JFrame {
 	public boolean playerStayed = false;
 	public boolean aiStayed = false;
 	
+	// Flag determining who goes first
+	public boolean isPlayerFirst = false;
+	
 	private GFrame() {
 		super();
 		
 		// Set default size for frame
-		Dimension size = new Dimension(this.fWidth, this.fHeight);
+		Dimension size = new Dimension(WIDTH, HEIGHT);
 		this.setPreferredSize(size);
 		this.setMinimumSize(size);
 		this.setResizable(false);
 		
 		// Set Layout to allow for exact content positioning
 		this.setLayout(null);
+		
+		// Initialize the hold status labels
+		this.playerHoldLabel = new JLabel();
+		this.playerHoldLabel.setFont(new Font(Font.SANS_SERIF, Font.BOLD, 20));
+		this.playerHoldLabel.setBounds(30, 320, 200, 40);
+		this.add(this.playerHoldLabel);
+		//--
+		this.aiHoldLabel = new JLabel();
+		this.aiHoldLabel.setFont(new Font(Font.SANS_SERIF, Font.BOLD, 20));
+		this.aiHoldLabel.setBounds(30, 240, 200, 40);
+		this.add(this.aiHoldLabel);
 		
 		// Initialize the score labels
 		this.playerScore = new JLabel("Your score: ##");
@@ -120,7 +152,7 @@ public class GFrame extends JFrame {
 		// Initialize victory label
 		this.victoryLabel = new JLabel("Victory Status");
 		this.victoryLabel.setFont(new Font(Font.SANS_SERIF, Font.BOLD, 30));
-		this.victoryLabel.setBounds(230, 350, 200, 40);
+		this.victoryLabel.setBounds(230, 350, 300, 40);
 		this.victoryLabel.setVisible(false);
 		this.add(this.victoryLabel);
 		
@@ -135,32 +167,41 @@ public class GFrame extends JFrame {
 		this.aiWinLabel.setBounds(30, 5, 200, 40);
 		this.add(this.aiWinLabel);
 		
+		// Initialize the first labels
+		this.playerFirstLabel = new JLabel();
+		this.playerFirstLabel.setFont(new Font(Font.SANS_SERIF, Font.BOLD, 20));
+		this.playerFirstLabel.setBounds(250, 555, 200, 40);
+		this.add(this.playerFirstLabel);
+		//--
+		this.aiFirstLabel = new JLabel();
+		this.aiFirstLabel.setFont(new Font(Font.SANS_SERIF, Font.BOLD, 20));
+		this.aiFirstLabel.setBounds(250, 5, 200, 40);
+		this.add(this.aiFirstLabel);
+		
 		// Add in the hit button
 		this.hitButton = new JButton("Hit Me");
 		this.hitButton.setBounds(250, 280, 100, 40);
 		this.hitButton.setFocusPainted(false);
 		this.hitButton.addActionListener(new ActionListener() { 
 			public void actionPerformed(ActionEvent e) { 
-				GFrame.this.hitButton.setEnabled(false);
-				GFrame.this.stayButton.setEnabled(false);
-				GFrame.this.dealPlayer();
-				GFrame.this.updateScores();
-				GFrame.this.updateDeckCount();
-				GFrame.this.repaint();
-				//--
-			    ActionListener listener = new ActionListener(){
-			        public void actionPerformed(ActionEvent event){
-						GFrame.this.aiTakeTurn();
-						GFrame.this.updateScores();
-						GFrame.this.updateDeckCount();
-						GFrame.this.checkEnd();
-						GFrame.this.repaint();
+				hitButton.setEnabled(false);
+				stayButton.setEnabled(false);
+				
+				// Player's turn
+				playerDrawTurn();
+				
+				// AI Turn
+			    ActionListener listener = new ActionListener() {
+			        public void actionPerformed(ActionEvent event) {
+			        	aiFullTurn();
+						hitButton.setEnabled(true);
+						stayButton.setEnabled(true);
 			        }
 			    };
-			    Timer timer = new Timer(400, listener);
+			    Timer timer = new Timer(ANIM_DELAY, listener);
 			    timer.setRepeats(false);
 			    timer.start();
-			  } 
+			} 
 		});
 		this.add(hitButton);
 		
@@ -170,36 +211,58 @@ public class GFrame extends JFrame {
 		this.stayButton.setFocusPainted(false);
 		this.stayButton.addActionListener(new ActionListener() { 
 			public void actionPerformed(ActionEvent e) { 
-				GFrame.this.hitButton.setEnabled(false);
-				GFrame.this.stayButton.setEnabled(false);
-				GFrame.this.playerStayed = true;
-			    ActionListener listener = new ActionListener(){
-			        public void actionPerformed(ActionEvent event){
-						GFrame.this.aiTakeTurn();
-						GFrame.this.updateScores();
-						GFrame.this.updateDeckCount();
-						GFrame.this.checkEnd();
-						GFrame.this.repaint();
-			        }
-			    };
-			    Timer timer = new Timer(400, listener);
-			    timer.setRepeats(false);
-			    timer.start();
-			  } 
+				hitButton.setEnabled(false);
+				stayButton.setEnabled(false);
+				
+				// Player turn
+				playerHold();
+				
+				// If player is second, check end-round condition
+				boolean roundEnd1 = false;
+				if (!isPlayerFirst) {
+					roundEnd1 = checkEnd();
+				}
+				
+				// If round hasn't ended, take AI's turn
+				if (!roundEnd1) {
+				    ActionListener listener = new ActionListener() {
+				        public void actionPerformed(ActionEvent event) {
+				        	aiFullTurn();
+				        	
+				        	// If player was first, check end-round condition now
+				        	boolean roundEnd2 = false;
+				        	if (isPlayerFirst) {
+				        		roundEnd2 = checkEnd();
+				        	}
+				        	
+				        	// If round still going, re-enable buttons
+			        		if (!roundEnd2) {
+								hitButton.setEnabled(true);
+								stayButton.setEnabled(true);
+			        		}
+			        		repaint();
+				        }
+				    };
+				    Timer timer = new Timer(ANIM_DELAY, listener);
+				    timer.setRepeats(false);
+				    timer.start();
+				}
+
+			} 
 		});
 		this.add(stayButton);
 		
 		// Add in the new game button
 		this.newButton = new JButton("New Round");
-		this.newButton.setBounds(580, 280, 100, 40);
+		this.newButton.setBounds(580, 280, 120, 40);
 		this.newButton.setBackground(new Color(255, 159, 128));
 		this.newButton.setFocusPainted(false);
 		this.newButton.setEnabled(false);
 		this.newButton.addActionListener(new ActionListener() { 
 			public void actionPerformed(ActionEvent e) { 
-				GFrame.this.startNewGame();
-				GFrame.this.newButton.setEnabled(false);
-			  } 
+				startNewGame();
+				newButton.setEnabled(false);
+			} 
 		});
 		this.add(newButton);
 		
@@ -223,9 +286,9 @@ public class GFrame extends JFrame {
 	
 	public void dealPlayer() {
 		// If we can't deal any more cards, end the round
-		if(this.topIndex >= 11) {
-			this.playerStayed = true;
-			this.aiStayed = true;
+		if (this.topIndex >= deck.length) {
+			playerHold();
+			aiHold();
 			return;
 		}
 		
@@ -234,7 +297,7 @@ public class GFrame extends JFrame {
 		
 		// Create card with value from top of deck
 		CardPanel card;
-		if(currentlyHeld == 0) {
+		if (currentlyHeld == 0) {
 			card = new CardPanel(this.popDeck());
 			card.getLabel().setForeground(Color.RED);
 		} else {
@@ -242,7 +305,7 @@ public class GFrame extends JFrame {
 		}
 		
 		// Set the bounds of the new card
-		card.setBounds(50 + ((CardPanel.getCWidth() + 10)*currentlyHeld), 400,
+		card.setBounds(50 + ((CardPanel.getCWidth() + 10) * currentlyHeld), 400,
 				CardPanel.getCWidth(), CardPanel.getCHeight());
 		
 		// Add references to card
@@ -250,14 +313,14 @@ public class GFrame extends JFrame {
 		this.add(card);
 		
 		// Indicate that player did not stay this turn
-		this.playerStayed = false;
+		playerDrew();
 	}
 	
 	public void dealAI() {
 		// If we can't deal any more cards, end the round
-		if(this.topIndex >= 11) {
-			this.playerStayed = true;
-			this.aiStayed = true;
+		if (this.topIndex >= deck.length) {
+			playerHold();
+			aiHold();
 			return;
 		}
 		
@@ -266,7 +329,7 @@ public class GFrame extends JFrame {
 		
 		// Create card with value from top of deck
 		CardPanel card;
-		if(currentlyHeld == 0) {
+		if (currentlyHeld == 0) {
 			card = new CardPanel(this.popDeck(), false);
 		} else {
 			card = new CardPanel(this.popDeck());
@@ -281,12 +344,12 @@ public class GFrame extends JFrame {
 		this.add(card);
 		
 		// Indicate that AI did not stay this turn
-		this.aiStayed = false;
+		aiDrew();
 	}
 	
 	// Pops the top value from the deck
 	public int popDeck() {
-		if(this.topIndex >= this.deck.length) {
+		if (this.topIndex >= this.deck.length) {
 			return -1;
 		} else {
 			int top = this.deck[this.topIndex];
@@ -297,7 +360,7 @@ public class GFrame extends JFrame {
 	
 	// Peeks the top value from the deck
 	public int peekDeck() {
-		if(this.topIndex >= this.deck.length) {
+		if (this.topIndex >= this.deck.length) {
 			return -1;
 		} else {
 			return this.deck[this.topIndex];
@@ -311,7 +374,7 @@ public class GFrame extends JFrame {
 		
 		// Shuffle the deck
 		Random r = new Random();
-		for(int i = this.deck.length - 1; i > 0; i--) {
+		for (int i = this.deck.length - 1; i > 0; i--) {
 			// Generate index to swap with
 			int shufIndex = r.nextInt(i + 1);
 			
@@ -325,13 +388,13 @@ public class GFrame extends JFrame {
 	// Update scores for the player and AI
 	public void updateScores() {
 		int plrScore = 0;
-		for(CardPanel card: this.playerCards) {
+		for (CardPanel card: this.playerCards) {
 			plrScore += card.getValue();
 		}
 		
 		int aiScore = 0;
 		boolean firstPassed = false;
-		for(CardPanel card: this.aiCards) {
+		for (CardPanel card: this.aiCards) {
 			if(firstPassed) {
 				aiScore += card.getValue();
 			} else {
@@ -356,14 +419,14 @@ public class GFrame extends JFrame {
 		this.lineup.roster[this.opptIndex].doTurn();
 	}
 	
-	public void checkEnd() {
-		if(this.playerStayed && this.aiStayed) {
+	public boolean checkEnd() {
+		if (this.playerStayed && this.aiStayed) {
 			// Reveal AI Score and cards
 			CardPanel aiFirstCard = this.aiCards.get(0);
 			aiFirstCard.getLabel().setText(Integer.toString(aiFirstCard.getValue()));
 			//--
 			int aiScore = 0;
-			for(CardPanel card: this.aiCards) {
+			for (CardPanel card: this.aiCards) {
 				aiScore += card.getValue();
 			}
 			this.aiScore.setText("AI score: "+Integer.toString(aiScore));
@@ -377,7 +440,7 @@ public class GFrame extends JFrame {
 			
 			// Get player score
 			int plrScore = 0;
-			for(CardPanel card: this.playerCards) {
+			for (CardPanel card: this.playerCards) {
 				plrScore += card.getValue();
 			}
 			
@@ -385,12 +448,12 @@ public class GFrame extends JFrame {
 			boolean plrOver = (plrScore > numGoal);
 			
 			// Display victory/loss message
-			if((aiOver && plrOver) || plrScore == aiScore) {
+			if ((aiOver && plrOver) || plrScore == aiScore) {
 				// Tie Game
 				this.victoryLabel.setText("Tie Game");
 				this.victoryLabel.setForeground(Color.BLACK);
 				this.victoryLabel.setVisible(true);
-			} else if(aiOver || (plrScore > aiScore && (!plrOver))) {
+			} else if (aiOver || (plrScore > aiScore && (!plrOver))) {
 				// Victory for player
 				this.victoryLabel.setText("Player Wins!!!");
 				this.victoryLabel.setForeground(new Color(0, 102, 0));
@@ -409,10 +472,9 @@ public class GFrame extends JFrame {
 			
 			// Enable 'New Round' Button
 			this.newButton.setEnabled(true);
+			return true;
 		} else {
-			// Disable Hit and Stay buttons
-			this.hitButton.setEnabled(true);
-			this.stayButton.setEnabled(true);
+			return false;
 		}
 	}
 	
@@ -433,7 +495,7 @@ public class GFrame extends JFrame {
 		this.victoryLabel.setVisible(false);
 		
 		// If certain number of rounds won by contender, start a new game
-		if(playerWins >= winGoal) {
+		if (playerWins >= winGoal) {
 			this.playerWins = 0;
 			this.aiWins = 0;
 			if(opptIndex < (lineup.roster.length - 1))
@@ -444,12 +506,12 @@ public class GFrame extends JFrame {
 		}
 		
 		// Remove player cards
-		for(CardPanel card: this.playerCards) {
+		for (CardPanel card: this.playerCards) {
 			this.remove(card);
 		}
 		
 		// Remove AI cards
-		for(CardPanel card: this.aiCards) {
+		for (CardPanel card: this.aiCards) {
 			this.remove(card);
 		}
 		
@@ -469,13 +531,61 @@ public class GFrame extends JFrame {
 		this.updateDeckCount();
 		this.updateWins();
 		this.updateOpponentInfo();
+		//--
+		this.playerHoldLabel.setText("");
+		this.aiHoldLabel.setText("");
 		
-		// Enable Hit and Stay buttons
-		this.hitButton.setEnabled(true);
-		this.stayButton.setEnabled(true);
+		// Toggle who goes first
+		toggleFirstCharacter();
 		
-		// Repaint the screen
-		this.repaint();
+		// If player goes second, take AI's turn now
+		if (!isPlayerFirst) {
+			// AI Turn
+		    ActionListener listener = new ActionListener() {
+		        public void actionPerformed(ActionEvent event) {
+		        	aiFullTurn();
+					hitButton.setEnabled(true);
+					stayButton.setEnabled(true);
+					repaint();
+		        }
+		    };
+		    Timer timer = new Timer(ANIM_DELAY, listener);
+		    timer.setRepeats(false);
+		    timer.start();
+		} else {
+			// Enable Hit and Stay buttons
+			this.hitButton.setEnabled(true);
+			this.stayButton.setEnabled(true);
+			
+			// Repaint the screen
+			this.repaint();
+		}
+	}
+	
+	private void toggleFirstCharacter() {
+		this.isPlayerFirst = !(this.isPlayerFirst);
+		
+		if (isPlayerFirst) {
+			this.playerFirstLabel.setText("FIRST");
+			this.aiFirstLabel.setText("");
+		} else {
+			this.playerFirstLabel.setText("");
+			this.aiFirstLabel.setText("FIRST");
+		}
+	}
+	
+	private void playerDrawTurn() {
+		dealPlayer();
+		updateScores();
+		updateDeckCount();
+		repaint();
+	}
+	
+	private void aiFullTurn() {
+		aiTakeTurn();
+		updateScores();
+		updateDeckCount();
+		repaint();
 	}
 	
 	//---------------------------------------------------------------------------------
@@ -498,6 +608,22 @@ public class GFrame extends JFrame {
 	
 	public void aiHold() {
 		this.aiStayed = true;
+		this.aiHoldLabel.setText("HOLD");
+	}
+	
+	public void aiDrew() {
+		this.aiStayed = false;
+		this.aiHoldLabel.setText("DREW");
+	}
+	
+	public void playerHold() {
+		this.playerStayed = true;
+		this.playerHoldLabel.setText("HOLD");
+	}
+	
+	public void playerDrew() {
+		this.playerStayed = false;
+		this.playerHoldLabel.setText("DREW");
 	}
 	
 }
